@@ -608,8 +608,8 @@ function vLog(){
     const guess=ui.logSlot??(sessionsForWeek(w).find(s=>!done.has(s.slot)&&s.kind===k)?.slot??"");
     h+=`<div class="frow">
       ${isRun||k==="hybrid"?`<div><label class="f">Distance (km)${k==="hybrid"?" — running only":""}</label>
-        <input id="f-km" type="number" inputmode="decimal" step="0.1" min="0" placeholder="5.0" value="${ui.f.km??""}"></div>`:""}
-      <div><label class="f">Duration (min)</label><input id="f-min" type="number" inputmode="decimal" step="1" min="0" placeholder="35" value="${ui.f.min??""}"></div>
+        <input id="f-km" type="text" inputmode="decimal" placeholder="5.0" value="${ui.f.km??""}"></div>`:""}
+      <div><label class="f">Duration (min)</label><input id="f-min" type="text" inputmode="decimal" placeholder="35" value="${ui.f.min??""}"></div>
       <div><label class="f">Avg heart rate <span class="faint">(optional)</span></label><input id="f-hr" type="number" inputmode="numeric" placeholder="e.g. 148" value="${ui.f.hr??""}"></div>
       <div><label class="f">Effort RPE 1–10</label><input id="f-rpe" type="number" inputmode="numeric" min="1" max="10" placeholder="5" value="${ui.f.rpe??""}"></div>
       <div><label class="f">Knee during/after (0–10)</label><input id="f-pain" type="number" inputmode="numeric" min="0" max="10" placeholder="0" value="${ui.f.pain??""}"></div>
@@ -767,7 +767,7 @@ document.addEventListener("click",e=>{
     render();window.scrollTo(0,0)}
   if(act==="kind"){grabForm();ui.logKind=b.dataset.v;render()}
   if(act==="save-log"){grabForm();
-    const f=ui.f,num=v=>v===""||v==null?null:Number(v);
+    const f=ui.f,num=v=>{if(v===""||v==null)return null;const n=Number(String(v).replace(",",".").trim());return isFinite(n)?n:null};
     const wkt={id:Date.now().toString(36),date:f.date||todayISO(),kind:ui.logKind,
       km:num(f.km)||0,min:num(f.min)||0,hr:num(f.hr),rpe:num(f.rpe),pain:num(f.pain)??0,
       notes:(f.notes||"").slice(0,400)};
@@ -788,7 +788,7 @@ document.addEventListener("click",e=>{
   if(act==="save-settings"){
     const g=id=>document.getElementById(id).value;
     state.settings.maxHR=Math.min(230,Math.max(120,Number(g("s-hr"))||190));
-    state.settings.baseKm=Math.min(30,Math.max(3,Number(g("s-base"))||10));
+    state.settings.baseKm=Math.min(30,Math.max(3,Number(String(g("s-base")).replace(",","."))||10));
     state.settings.division=g("s-div");state.settings.raceDate=g("s-race")||"";
     save();closeSheet();render()}
   if(act==="export"){
@@ -807,7 +807,7 @@ function openSheet(){
   <div class="sheet-head"><h3>Settings</h3><button class="btn slim ghost" data-close>Close</button></div>
   <div class="frow">
     <div><label class="f">Max heart rate</label><input id="s-hr" type="number" inputmode="numeric" value="${s.maxHR}"></div>
-    <div><label class="f">Base weekly run km</label><input id="s-base" type="number" inputmode="decimal" value="${s.baseKm}"></div>
+    <div><label class="f">Base weekly run km</label><input id="s-base" type="text" inputmode="decimal" value="${s.baseKm}"></div>
     <div><label class="f">Division</label><select id="s-div">
       ${["open","pro","doubles"].map(d=>`<option value="${d}" ${s.division===d?"selected":""}>${d[0].toUpperCase()+d.slice(1)}</option>`).join("")}</select></div>
     <div><label class="f">Race date</label><input id="s-race" type="date" value="${s.raceDate||""}"></div>
