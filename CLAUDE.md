@@ -29,7 +29,9 @@ training".
 Adaptation knobs: ~8%/week volume ramp, deload every 4th week, pain gating
 (amber = −25% volume + quality→steady swap, red = −50% + running off-legs),
 phase gate Rebuild→Build = one 8 km run with knee ≤2/10 after. Race split model:
-runs 47% / stations 47% / Roxzone 6% of target time.
+runs 47% / stations 47% / Roxzone 6% of target time. Weekly sessions have no
+fixed order: any slot can be logged in any order, backdated (slot week follows
+the workout date), or marked skipped (`state.skips[week] = [slot,...]`).
 
 ## Test & deploy
 

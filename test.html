@@ -43,7 +43,28 @@ document.getElementById("f").onload = async () => {
     log("spine-segments:", d.querySelectorAll(".seg").length, "(expect 16)");
     const cum = d.querySelectorAll(".seg .cum"); const lastCum = cum[cum.length-1]?.textContent;
     log("last-cum:", lastCum, "(expect ~@ 1:40:00 minus wall-ball end ok)");
-    // 6. re-render sanity across tabs
+    // 6. backfill: date change makes the "counts as" picker week-aware
+    d.querySelector('[data-tab="log"]').click(); await tick();
+    click('[data-act="kind"][data-v="easy"]'); await tick();
+    const past = new Date(Date.now() - 7*86400000);
+    const pIso = past.getFullYear()+"-"+String(past.getMonth()+1).padStart(2,"0")+"-"+String(past.getDate()).padStart(2,"0");
+    d.getElementById("f-date").value = pIso;
+    d.getElementById("f-date").dispatchEvent(new w.Event("change", {bubbles:true})); await tick();
+    const optTxt = d.getElementById("f-slot").options[1].textContent;
+    log("slot-label:", /last week/.test(optTxt) ? "week-aware ok" : "FAIL: " + optTxt);
+    d.getElementById("f-km").value = "5"; d.getElementById("f-min").value = "33";
+    click('[data-act="save-log"]'); await tick();
+    const bw = st().workouts[0];
+    log("backfill:", bw ? `week=${bw.week} slot=${bw.slot}` : "FAIL", "(expect week=-1 slot=1)");
+    // 7. skip / unskip a session
+    d.querySelector('[data-tab="today"]').click(); await tick();
+    click('[data-act="skip-session"]'); await tick();
+    log("skips:", JSON.stringify(st().skips), "(expect {\"0\":[1]})");
+    log("skip-cell:", d.querySelectorAll(".wcell.skip").length, "(expect 1)");
+    d.querySelector('[data-tab="plan"]').click(); await tick();
+    click('[data-act="unskip-session"]'); await tick();
+    log("after-unskip:", JSON.stringify(st().skips["0"] || []), "(expect [])");
+    // 8. re-render sanity across tabs
     for (const t of ["today","plan","progress","log"]) { d.querySelector(`[data-tab="${t}"]`).click(); await tick(60); }
     log("tabs-ok");
     log("DONE");

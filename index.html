@@ -98,6 +98,9 @@ h2.sec small{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--
 .bib.done .inner{opacity:.55}
 .bib.done .kindtag{visibility:hidden}
 .donetag{position:absolute;top:14px;right:14px;font-family:var(--disp);font-weight:800;letter-spacing:.06em;color:var(--good);border:2px solid var(--good);border-radius:6px;padding:2px 8px;transform:rotate(-6deg);font-size:15px}
+.bib.skipped .inner{opacity:.55}
+.donetag.skiptag{color:var(--ink-3);border-color:var(--ink-3)}
+.skiplink{display:block;width:100%;text-align:center;margin-top:10px;padding:4px;font-size:12.5px;color:var(--ink-3)}
 
 /* week strip */
 .weekstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
@@ -107,6 +110,7 @@ h2.sec small{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--
 .wcell.done{background:var(--accent);border-color:var(--accent)}
 .wcell.done .k,.wcell.done .s{color:var(--accent-ink)}
 .wcell.next{border-color:var(--accent)}
+.wcell.skip{border-style:dashed;opacity:.62}
 
 /* countdown */
 .count{display:flex;align-items:baseline;gap:12px}
@@ -251,7 +255,8 @@ const KEY="roxback-v1";
 const defaults=()=>({v:1,
   settings:{maxHR:190,division:"open",raceDate:"",baseKm:10,anchorMonday:mondayOf(new Date())},
   checkins:{},           // iso date -> {pain:0-10, stiff:bool}
-  workouts:[]            // {id,date,kind,km,min,hr,rpe,pain,notes,week,slot}
+  workouts:[],           // {id,date,kind,km,min,hr,rpe,pain,notes,week,slot}
+  skips:{}               // week index -> [slot,...] sessions deliberately skipped
 });
 let state=load();
 function load(){try{const raw=localStorage.getItem(KEY);if(!raw)return defaults();
@@ -405,7 +410,9 @@ function sessionsForWeek(w){
   return S
 }
 function doneSlots(w){const s=new Set();state.workouts.forEach(x=>{if(x.week===w&&x.slot)s.add(x.slot)});return s}
-function nextSession(){const w=curWeek(),d=doneSlots(w);return sessionsForWeek(w).find(s=>!d.has(s.slot))||null}
+function skippedSlots(w){return new Set(state.skips[w]||[])}
+function nextSession(){const w=curWeek(),d=doneSlots(w),k=skippedSlots(w);
+  return sessionsForWeek(w).find(s=>!d.has(s.slot)&&!k.has(s.slot))||null}
 
 /* ================= domain: race model ================= */
 const DIV={open:{push:"152 kg · 50 m",pull:"103 kg · 50 m",farm:"2×24 kg · 200 m",lunge:"20 kg · 100 m",wb:"6 kg · 100 reps"},
@@ -540,7 +547,7 @@ function motivStat(){
   return`Day 1. Everything counts from here.`
 }
 function vToday(){
-  const ps=painStatus(),w=curWeek(),sess=sessionsForWeek(w),done=doneSlots(w),next=nextSession();
+  const ps=painStatus(),w=curWeek(),sess=sessionsForWeek(w),done=doneSlots(w),skip=skippedSlots(w),next=nextSession();
   let h="";
   if(ps.level!=="green")h+=`<div class="banner ${ps.level==="amber"?"amber":"red"}"><span class="ic">${ps.level==="amber"?"⚠️":"⛔"}</span>
     <span><b>${ps.level==="amber"?"Adjusted for the knee.":"Recovery mode."}</b> ${ps.why}</span></div>`;
@@ -553,33 +560,40 @@ function vToday(){
       <span class="lbl">days to race day<br><span class="faint tiny">${fmtDate(rd)}</span></span></div></div>`}
   h+=`<h2 class="sec">This week <small>${loggedKmWeek(w)} / ${plannedKm(w)} KM RUN</small></h2>`;
   h+=`<div class="weekstrip">${sess.map(s=>{
-    const d=done.has(s.slot),isNext=next&&next.slot===s.slot;
-    return`<div class="wcell ${d?"done":""} ${isNext?"next":""}"><div class="k">${d?"✓":s.tag[0]+s.slot}</div><div class="s">${s.tag}</div></div>`}).join("")}</div>`;
-  if(next){h+=bibCard(next,false,`Session ${next.slot} of 4 · Week ${w+1}`);}
-  else h+=`<div class="card" style="text-align:center;padding:26px 16px">
-    <div style="font-family:var(--disp);font-weight:800;font-size:26px;letter-spacing:.03em">WEEK COMPLETE ✓</div>
-    <p class="muted tiny" style="margin-top:6px">All four sessions banked. Recover hard — next week loads on Monday.</p></div>`;
+    const d=done.has(s.slot),sk=!d&&skip.has(s.slot),isNext=next&&next.slot===s.slot;
+    return`<div class="wcell ${d?"done":""} ${sk?"skip":""} ${isNext?"next":""}"><div class="k">${d?"✓":sk?"–":s.tag[0]+s.slot}</div><div class="s">${sk?"SKIPPED":s.tag}</div></div>`}).join("")}</div>`;
+  if(next){h+=bibCard(next,false,`Session ${next.slot} of 4 · Week ${w+1}`);
+    const others=sess.filter(s=>s.slot!==next.slot&&!done.has(s.slot)&&!skip.has(s.slot));
+    if(others.length)h+=`<div class="card pad-s"><div class="tiny muted" style="margin-bottom:8px">Doing a different one today? Any order counts.</div>
+      <div class="chiprow">${others.map(s=>`<button class="chip" data-act="log-session" data-slot="${s.slot}" data-kind="${s.kind}">${s.title}</button>`).join("")}</div></div>`;
+  }else{const nSkip=[...skip].filter(s=>!done.has(s)).length;
+    h+=`<div class="card" style="text-align:center;padding:26px 16px">
+    <div style="font-family:var(--disp);font-weight:800;font-size:26px;letter-spacing:.03em">${nSkip?"WEEK WRAPPED":"WEEK COMPLETE"} ✓</div>
+    <p class="muted tiny" style="margin-top:6px">${nSkip?`${4-nSkip} banked, ${nSkip} skipped — a real week, not a failed one. Don't cram the missed work in; next week adapts to what you actually logged.`:"All four sessions banked. Recover hard — next week loads on Monday."}</p></div>`;}
   h+=`<div class="card pad-s tiny muted">${motivStat()}</div>`;
   if(!window.matchMedia("(display-mode: standalone)").matches&&/iPhone|iPad/.test(navigator.userAgent))
     h+=`<div class="card pad-s tiny faint">Install: tap <b>Share</b> → <b>Add to Home Screen</b>. Full screen, offline, and your data survives Safari cleanups.</div>`;
   return h
 }
-function bibCard(s,done,slotLabel){
-  return`<div class="bib ${done?"done":""}">
-    ${done?'<span class="donetag">DONE</span>':""}
+function bibCard(s,done,slotLabel,skipped=false){
+  skipped=skipped&&!done;
+  return`<div class="bib ${done?"done":""} ${skipped?"skipped":""}">
+    ${done?'<span class="donetag">DONE</span>':skipped?'<span class="donetag skiptag">SKIPPED</span>':""}
     <div class="inner">
       <div class="slotline"><span class="slot">${slotLabel}</span><span class="kindtag">${s.tag}</span></div>
       <h3>${s.title}</h3>
       <div class="rx">${s.rx}</div>
       <div class="cue">${s.cue}</div>
       ${s.items.length?`<ul>${s.items.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
-      ${done?"":`<button class="btn primary" data-act="log-session" data-slot="${s.slot}" data-kind="${s.kind}">Log this session</button>`}
+      ${done?"":skipped?`<button class="btn slim ghost" data-act="unskip-session" data-slot="${s.slot}">Put it back in the week</button>`
+        :`<button class="btn primary" data-act="log-session" data-slot="${s.slot}" data-kind="${s.kind}">Log this session</button>
+      <button class="skiplink" data-act="skip-session" data-slot="${s.slot}">Can't fit this one in? Skip it — the plan adapts</button>`}
     </div></div>`
 }
 
 /* ---------- plan ---------- */
 function vPlan(){
-  const w=curWeek(),ph=phase(),sess=sessionsForWeek(w),done=doneSlots(w);
+  const w=curWeek(),ph=phase(),sess=sessionsForWeek(w),done=doneSlots(w),skip=skippedSlots(w);
   let h=`<div class="card"><div class="eyebrow" style="margin-bottom:4px">PHASE</div>
     <div style="font-family:var(--disp);font-weight:800;font-size:26px;text-transform:uppercase;letter-spacing:.03em">${PHASE_LABEL[ph]}</div>
     <p class="tiny muted" style="margin-top:6px">${PHASE_NOTE[ph]}</p>
@@ -589,7 +603,7 @@ function vPlan(){
   if(w%4===3)h+=`<div class="card pad-s tiny muted">🔄 <b>Deload week</b> — volume drops ~30% on purpose. Adaptation happens in the easy weeks.</div>`;
   if(ps.level!=="green")h+=`<div class="banner ${ps.level==="amber"?"amber":"red"}"><span class="ic">🦵</span><span>${ps.why}</span></div>`;
   h+=`<h2 class="sec">Week ${w+1} <small>${plannedKm(w)} KM PLANNED</small></h2>`;
-  sess.forEach(s=>{h+=bibCard(s,done.has(s.slot),`Session ${s.slot} of 4`)});
+  sess.forEach(s=>{h+=bibCard(s,done.has(s.slot),`Session ${s.slot} of 4`,skip.has(s.slot))});
   const nx=plannedKmRaw(w+1);
   h+=`<div class="card pad-s tiny faint">Next week projects to ~<b class="mono">${r1(Math.min(nx,plannedKm(w)*1.25+2))} km</b> of running${(w+1)%4===3?" (deload)":""} — it adapts to what you actually log and how the knee responds.</div>`;
   return h
@@ -604,8 +618,11 @@ function vLog(){
     ${KINDS.map(([v,l])=>`<button class="chip" data-act="kind" data-v="${v}" aria-pressed="${k===v}">${l}</button>`).join("")}</div>`;
   if(k){
     const isRun=k==="easy"||k==="quality",z=zones();
-    const w=curWeek(),done=doneSlots(w);
-    const guess=ui.logSlot??(sessionsForWeek(w).find(s=>!done.has(s.slot)&&s.kind===k)?.slot??"");
+    const dISO=ui.f.date||todayISO(),wSel=weekIndexOf(dISO),done=doneSlots(wSel),wkSess=sessionsForWeek(wSel);
+    const guess=ui.logSlot??(wkSess.find(s=>!done.has(s.slot)&&s.kind===k)?.slot
+      ??(isRun?wkSess.find(s=>!done.has(s.slot)&&(s.kind==="easy"||s.kind==="quality"))?.slot:null)
+      ??"");
+    const wkLbl=wSel===curWeek()?"this week":wSel===curWeek()-1?"last week":"wk of "+fmtDate(mondayOf(fromISO(dISO)));
     h+=`<div class="frow">
       ${isRun||k==="hybrid"?`<div><label class="f">Distance (km)${k==="hybrid"?" — running only":""}</label>
         <input id="f-km" type="text" inputmode="decimal" placeholder="5.0" value="${ui.f.km??""}"></div>`:""}
@@ -616,7 +633,7 @@ function vLog(){
       <div><label class="f">Date</label><input id="f-date" type="date" value="${ui.f.date??todayISO()}"></div>
     </div>
     <div class="frow one"><div><label class="f">Counts as</label>
-      <select id="f-slot">${["",1,2,3,4].map(s=>`<option value="${s}" ${String(guess)===String(s)?"selected":""}>${s===""?"— not a planned session —":"Session "+s+" of this week"+(done.has(s)?" (already done)":"")}</option>`).join("")}</select></div></div>
+      <select id="f-slot">${["",1,2,3,4].map(s=>`<option value="${s}" ${String(guess)===String(s)?"selected":""}>${s===""?"— not a planned session —":"Session "+s+" of "+wkLbl+(done.has(s)?" (already done)":"")}</option>`).join("")}</select></div></div>
     <div class="frow one"><div><label class="f">Notes <span class="faint">(splits, weights, how it felt)</span></label>
       <textarea id="f-notes" rows="2">${esc(ui.f.notes??"")}</textarea></div></div>
     <p class="tiny faint" style="margin:2px 0 10px">Zone guide: ${z.map(x=>`Z${x.z} ${x.lo}–${x.hi}`).join(" · ")}</p>
@@ -765,7 +782,7 @@ document.addEventListener("click",e=>{
   if(act==="log-session"){ui.logKind=b.dataset.kind;ui.logSlot=b.dataset.slot;ui.f={};tab="log";
     document.querySelectorAll("#tabbar button").forEach(x=>x.setAttribute("aria-selected",x.dataset.tab==="log"));
     render();window.scrollTo(0,0)}
-  if(act==="kind"){grabForm();ui.logKind=b.dataset.v;render()}
+  if(act==="kind"){grabForm();ui.logKind=b.dataset.v;ui.logSlot=null;render()}
   if(act==="save-log"){grabForm();
     const f=ui.f,num=v=>{if(v===""||v==null)return null;const n=Number(String(v).replace(",",".").trim());return isFinite(n)?n:null};
     const wkt={id:Date.now().toString(36),date:f.date||todayISO(),kind:ui.logKind,
@@ -773,10 +790,15 @@ document.addEventListener("click",e=>{
       notes:(f.notes||"").slice(0,400)};
     if(!wkt.min&&!wkt.km){alert("Add at least a duration or distance.");return}
     wkt.week=weekIndexOf(wkt.date);wkt.slot=ui.logSlot?Number(ui.logSlot):null;
-    state.workouts.push(wkt);state.workouts.sort((a,b)=>a.date<b.date?-1:1);
+    if(wkt.slot&&state.skips[wkt.week])state.skips[wkt.week]=state.skips[wkt.week].filter(x=>x!==wkt.slot);
+    state.workouts.push(wkt);state.workouts.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
     save();ui.logKind=null;ui.f={};ui.logSlot=null;tab="today";
     document.querySelectorAll("#tabbar button").forEach(x=>x.setAttribute("aria-selected",x.dataset.tab==="today"));
     render();window.scrollTo(0,0)}
+  if(act==="skip-session"){const w=curWeek(),sl=Number(b.dataset.slot);
+    const arr=state.skips[w]=state.skips[w]||[];if(!arr.includes(sl))arr.push(sl);save();render()}
+  if(act==="unskip-session"){const w=curWeek();
+    state.skips[w]=(state.skips[w]||[]).filter(x=>x!==Number(b.dataset.slot));save();render()}
   if(act==="del-log"){if(confirm("Delete this session?")){
     state.workouts=state.workouts.filter(x=>x.id!==b.dataset.id);save();render()}}
   if(act==="set-race"){const v=document.getElementById("f-race").value;
@@ -799,6 +821,9 @@ document.addEventListener("click",e=>{
     localStorage.removeItem(KEY);state=load();closeSheet();render()}}
 });
 document.getElementById("btn-settings").addEventListener("click",openSheet);
+/* backdating a session: re-guess which week/slot it counts as */
+document.addEventListener("change",e=>{
+  if(e.target.id==="f-date"){grabForm();ui.logSlot=null;render()}});
 
 /* settings sheet */
 function openSheet(){
